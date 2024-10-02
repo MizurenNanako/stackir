@@ -200,6 +200,10 @@ impl Machine {
                 let t = self.r_pop();
                 self.push(t);
             }
+            Instructions::ToR => {
+                let t = self.pop();
+                self.r_push(t);
+            }
             Instructions::Swap => self.calculation_stack.swap(),
             Instructions::Over => self.calculation_stack.over(),
             Instructions::Dup => self.calculation_stack.dup(),
@@ -473,6 +477,30 @@ impl Machine {
             Instructions::FtoI => {
                 let a = f64::from_bits(self.pop());
                 self.push(u64::from_le_bytes((a as i64).to_le_bytes()));
+            }
+            Instructions::Sinhf => {
+                let a = f64::from_bits(self.pop());
+                self.push(a.sinh().to_bits());
+            }
+            Instructions::Coshf => {
+                let a = f64::from_bits(self.pop());
+                self.push(a.cosh().to_bits());
+            }
+            Instructions::Tanhf => {
+                let a = f64::from_bits(self.pop());
+                self.push(a.tanh().to_bits());
+            }
+            Instructions::ArcSinhf => {
+                let a = f64::from_bits(self.pop());
+                self.push(a.asinh().to_bits());
+            }
+            Instructions::ArcCoshf => {
+                let a = f64::from_bits(self.pop());
+                self.push(a.acosh().to_bits());
+            }
+            Instructions::ArcTanhf => {
+                let a = f64::from_bits(self.pop());
+                self.push(a.atanh().to_bits());
             }
         };
         self.next();
