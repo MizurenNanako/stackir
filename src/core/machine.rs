@@ -340,13 +340,13 @@ impl Machine {
             }
             Instructions::J => {
                 let addr = program.get_im_u64_at(self.pc + 1);
-                self.pc = addr;
+                self.pc = addr - 1; // -1 for later increase
             }
             Instructions::Jz => {
                 let addr = program.get_im_u64_at(self.pc + 1);
                 let a = self.pop();
                 match a {
-                    0 => self.pc = addr,
+                    0 => self.pc = addr - 1,
                     _ => (),
                 }
             }
@@ -355,12 +355,12 @@ impl Machine {
                 let a = self.pop();
                 match a {
                     0 => (),
-                    _ => self.pc = addr,
+                    _ => self.pc = addr - 1,
                 }
             }
             Instructions::Ja => {
                 let addr = self.pop();
-                self.pc = addr;
+                self.pc = addr - 1;
             }
             Instructions::Add => {
                 let a = self.pop_signed();
