@@ -1,1 +1,1 @@
-pub mod statkir;
+pub mod core;

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Read};
+use std::{io::Read, usize};
 
 use super::instructions::Instructions;
 
@@ -24,8 +24,8 @@ impl Machine {
     fn next(&mut self) {
         self.pc += 1;
     }
-    fn skip_im(&mut self) {
-        self.pc += size_of::<u64>() as u64;
+    fn skip_im(&mut self, n: usize) {
+        self.pc += n as u64;
     }
     fn resume(&mut self) {
         self.state = MachineState::Running;
@@ -75,9 +75,36 @@ impl ProgramMemory {
         Instructions::of_opcode(opcode)
             .expect(format!("get_opcode error: unsupported opcode {opcode}").as_str())
     }
-    fn get_immediate_at(&self, index: u64) -> u64 {
+    fn get_im_u8_at(&self, index: u64) -> u8 {
+        self.prog[index as usize]
+    }
+    fn get_im_u16_at(&self, index: u64) -> u16 {
+        let mut buf: [u8; 2] = [0; 2];
+        let mut bytes = &self.prog[(index as usize)..(index as usize + size_of::<u16>())];
+        bytes.read_exact(&mut buf[..size_of::<u16>()]).expect(
+            format!("corrupted program memory at {index} read when getting immediate").as_str(),
+        );
+        u16::from_le_bytes(buf)
+    }
+    fn get_im_u32_at(&self, index: u64) -> u32 {
+        let mut buf: [u8; 4] = [0; 4];
+        let mut bytes = &self.prog[(index as usize)..(index as usize + size_of::<u32>())];
+        bytes.read_exact(&mut buf[..size_of::<u32>()]).expect(
+            format!("corrupted program memory at {index} read when getting immediate").as_str(),
+        );
+        u32::from_le_bytes(buf)
+    }
+    fn get_im_u64_at(&self, index: u64) -> u64 {
         let mut buf: [u8; 8] = [0; 8];
         let mut bytes = &self.prog[(index as usize)..(index as usize + size_of::<u64>())];
+        bytes.read_exact(&mut buf[..size_of::<u64>()]).expect(
+            format!("corrupted program memory at {index} read when getting immediate").as_str(),
+        );
+        u64::from_le_bytes(buf)
+    }
+    fn get_data_u64_at(&self, index: u64) -> u64 {
+        let mut buf: [u8; 8] = [0; 8];
+        let mut bytes = &self.data[(index as usize)..(index as usize + size_of::<u64>())];
         bytes.read_exact(&mut buf[..size_of::<u64>()]).expect(
             format!("corrupted program memory at {index} read when getting immediate").as_str(),
         );
@@ -167,14 +194,72 @@ impl ReturnStack {
 #[derive(Debug)]
 struct RuntimeMemory {
     // addr, value
-    raw: HashMap<u64, u64>,
+    raw: Vec<u8>,
 }
 
 #[allow(dead_code)]
 impl RuntimeMemory {
-    fn new() -> RuntimeMemory {
-        RuntimeMemory {
-            raw: HashMap::new(),
+    fn new() -> Self {
+        Self { raw: Vec::new() }
+    }
+    fn alloc(&mut self, size: u64) {
+        for _ in 0..size {
+            self.raw.push(0)
+        }
+    }
+    fn dealloc(&mut self, size: u64) {
+        for _ in 0..size {
+            self.raw
+                .pop()
+                .expect("dealloc: runtime memory underflowed.");
+        }
+    }
+    fn local_get_u64(&self, start_pos: u64) -> u64 {
+        let mut t: [u8; 8] = [0u8; 8];
+        self.raw
+            .get((start_pos as usize)..size_of::<u64>())
+            .expect(
+                format!(
+                    "local_get: accessing invaild memory location {}.",
+                    start_pos
+                )
+                .as_str(),
+            )
+            .read_exact(&mut t)
+            .expect("local_get_u64: invaild memory read");
+        u64::from_le_bytes(t)
+    }
+    fn local_save_i64(&mut self, value: i64, start_pos: u64) {
+        for (a, b) in self
+            .raw
+            .iter_mut()
+            .skip(start_pos as usize)
+            .take(size_of::<i64>())
+            .zip(value.to_le_bytes())
+        {
+            *a = b;
+        }
+    }
+    fn local_save_u64(&mut self, value: u64, start_pos: u64) {
+        for (a, b) in self
+            .raw
+            .iter_mut()
+            .skip(start_pos as usize)
+            .take(size_of::<u64>())
+            .zip(value.to_le_bytes())
+        {
+            *a = b;
+        }
+    }
+    fn local_save_f64(&mut self, value: f64, start_pos: u64) {
+        for (a, b) in self
+            .raw
+            .iter_mut()
+            .skip(start_pos as usize)
+            .take(size_of::<f64>())
+            .zip(value.to_le_bytes())
+        {
+            *a = b;
         }
     }
 }
@@ -208,23 +293,57 @@ impl Machine {
             Instructions::Over => self.calculation_stack.over(),
             Instructions::Dup => self.calculation_stack.dup(),
             Instructions::Discard => self.calculation_stack.discard(),
-            Instructions::Imme => {
-                let im = program.get_immediate_at(self.pc + 1);
+            Instructions::Im8 => {
+                let im = program.get_im_u8_at(self.pc + 1);
+                self.push(im as u64);
+                self.skip_im(size_of::<u8>()); // pc + 8
+            }
+            Instructions::Im16 => {
+                let im = program.get_im_u16_at(self.pc + 1);
+                self.push(im as u64);
+                self.skip_im(size_of::<u16>()); // pc + 8
+            }
+            Instructions::Im32 => {
+                let im = program.get_im_u32_at(self.pc + 1);
+                self.push(im as u64);
+                self.skip_im(size_of::<u32>()); // pc + 8
+            }
+            Instructions::Im64 => {
+                let im = program.get_im_u64_at(self.pc + 1);
                 self.push(im);
-                self.skip_im(); // pc + 8
+                self.skip_im(size_of::<u64>()); // pc + 8
             }
-            Instructions::Store => {
-                todo!()
+            Instructions::Store64 => {
+                let addr = self.pop();
+                let value = self.pop();
+                self.runtime_memory.local_save_u64(value, addr);
             }
-            Instructions::Load => {
-                todo!()
+            Instructions::Load64 => {
+                let addr = self.pop();
+                let value = self.runtime_memory.local_get_u64(addr);
+                self.push(value);
+            }
+            Instructions::Alloc => {
+                let siz = program.get_im_u8_at(self.pc + 1);
+                self.runtime_memory.alloc(siz as u64);
+                self.skip_im(size_of::<u8>());
+            }
+            Instructions::Dealloc => {
+                let siz = program.get_im_u8_at(self.pc + 1);
+                self.runtime_memory.dealloc(siz as u64);
+                self.skip_im(size_of::<u8>());
+            }
+            Instructions::LoadData64 => {
+                let addr = self.pop();
+                let value = program.get_data_u64_at(addr);
+                self.push(value);
             }
             Instructions::J => {
-                let addr = program.get_immediate_at(self.pc + 1);
+                let addr = program.get_im_u64_at(self.pc + 1);
                 self.pc = addr;
             }
             Instructions::Jz => {
-                let addr = program.get_immediate_at(self.pc + 1);
+                let addr = program.get_im_u64_at(self.pc + 1);
                 let a = self.pop();
                 match a {
                     0 => self.pc = addr,
@@ -232,7 +351,7 @@ impl Machine {
                 }
             }
             Instructions::Jnz => {
-                let addr = program.get_immediate_at(self.pc + 1);
+                let addr = program.get_im_u64_at(self.pc + 1);
                 let a = self.pop();
                 match a {
                     0 => (),
@@ -256,12 +375,12 @@ impl Machine {
             Instructions::Sub => {
                 let a = self.pop_signed();
                 let b = self.pop_signed();
-                self.push_signed(a - b);
+                self.push_signed(b - a);
             }
             Instructions::Subu => {
                 let a = self.pop();
                 let b = self.pop();
-                self.push(a - b);
+                self.push(b - a);
             }
             Instructions::Mul => {
                 let a = self.pop_signed();
@@ -374,7 +493,7 @@ impl Machine {
             Instructions::Subf => {
                 let a = f64::from_bits(self.pop());
                 let b = f64::from_bits(self.pop());
-                self.push((a - b).to_bits());
+                self.push((b - a).to_bits());
             }
             Instructions::Mulf => {
                 let a = f64::from_bits(self.pop());
