@@ -1,11 +1,9 @@
-use stackir::core as stk;
-use stk::{
-    instructions::Instructions as I,
-    machine::{Machine, MachineState, ProgramMemory},
-};
+use stackir::instruction::Instructions as I;
+use stackir::machine::program_memory::ProgramMemory;
+use stackir::machine::{Machine, MachineState};
 
 fn main() {
-    use stk::instructions::ProgramMaker;
+    use stackir::instruction::program_maker::ProgramMaker;
     let mut ins = Vec::new();
     ins
         // jump to 1+8+1=10
@@ -25,18 +23,18 @@ fn main() {
         .add_ins(I::Neg)
         // alloc 8 bytes
         .add_ins(I::Alloc)
-        .add_im8(8)
+        .add_im8(2)
         // push addr = 0, store it to addr
         .add_ins(I::Im8)
         .add_im8(0)
-        .add_ins(I::Store64)
+        .add_ins(I::Store16)
         // push 3
         .add_ins(I::Im8)
         .add_im8(3)
         // push addr = 0, load from addr
         .add_ins(I::Im8)
         .add_im8(0)
-        .add_ins(I::Load64)
+        .add_ins(I::Load16)
         // add them
         .add_ins(I::Add)
         .add_ins(I::Im16)
@@ -44,14 +42,14 @@ fn main() {
         .add_ins(I::Dup)
         // alloc 8 bytes
         .add_ins(I::Alloc)
-        .add_im8(8)
+        .add_im8(1)
         // store
         .add_ins(I::Im8)
-        .add_im8(9)
-        .add_ins(I::Store64)
-        // dealloc 16 bytes
+        .add_im8(2)
+        .add_ins(I::Store8)
+        // dealloc 3 bytes
         .add_ins(I::Dealloc)
-        .add_im8(16)
+        .add_im8(3)
         // jump to 9, interupt the program
         .add_ins(I::Im8)
         .add_im8(9)
